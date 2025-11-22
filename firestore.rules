@@ -1,0 +1,50 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // PUBLIC ACCESS: robots, engineers, repair requests, and visitor counts are public to read
+    match /robots/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null; // Only authenticated users can write
+    }
+    match /engineers/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null; // Only authenticated users can write
+    }
+    match /repairRequests/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null; // Only authenticated users can write
+    }
+    match /repairRequests/{requestId}/offers/{offerId} {
+      allow read: if request.auth != null && get(/databases/$(database)/documents/repairRequests/$(requestId)).data.requesterUid == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.engineerUid == request.auth.uid;
+      allow update: if false;
+      allow delete: if false;
+    }
+    match /visitors/{path=**} {
+      allow read: if true;
+      allow write: if false; // NO client writes
+    }
+
+    // USER-SPECIFIC: Allow users to read public profiles, but only write to their own.
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    // Subcollections under a user (like fcmTokens) remain private to that user.
+    match /users/{userId}/{documents=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // CHAT: Only participants can read/write messages
+    match /chats/{chatId} {
+      // Document creation might be handled by a function, or check participants in request
+      allow read, update: if request.auth != null && resource.data.participants.hasAny([request.auth.uid]);
+      allow create: if request.auth != null; // Simplified for now
+    }
+
+    match /chats/{chatId}/messages/{messageId} {
+      allow read, create: if request.auth != null && get(/databases/$(database)/documents/chats/$(chatId)).data.participants.hasAny([request.auth.uid]);
+      allow update, delete: if false; // Messages are immutable
+    }
+  }
+}
